@@ -134,6 +134,10 @@ namespace ModelRenderer.WaveFront
                     {
                         currentMaterial.IlluminationModel = int.Parse(lineData);
                     }
+					else if (lineType.IsLineType("Tf"))
+                    {
+						currentMaterial.TransmissionFilter = ReadColour(lineData);
+					}
                     else
                     {
                         //  Anything we encounter here we don't understand.

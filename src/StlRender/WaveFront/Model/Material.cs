@@ -82,5 +82,7 @@ namespace ModelRenderer.WaveFront.Model
         /// Gets the occasionally used bump strength.
         /// </summary>
         public float? BumpStrength { get; internal set; }
+
+	    public Color TransmissionFilter { get; internal set; }
     }
 }

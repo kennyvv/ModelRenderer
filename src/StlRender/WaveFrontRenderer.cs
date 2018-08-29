@@ -41,7 +41,15 @@ namespace ModelRenderer
 			var result = FileFormatObj.Load(device, file, true);
 			foreach (var msg in result.Messages)
 			{
-				Console.WriteLine($"File: {msg.FileName} - Exception: {msg.Exception.ToString()}");
+				if (msg.Exception == null)
+				{
+					Console.WriteLine($"File: {msg.FileName} - Details: {msg.Details}");
+				}
+				else
+				{
+					Console.WriteLine($"File: {msg.FileName} - Exception: {msg.Exception.ToString()}");
+				}
+				
 			}
 			var vertices = result.Model.Vertices;
 			var normals = result.Model.Normals;
@@ -73,7 +81,7 @@ namespace ModelRenderer
 				for (var i = 0; i < g.Faces.Count; i++)
 				{
 					var face = g.Faces[i];
-
+					
 					VertexPositionNormalTexture[] faceVertices = new VertexPositionNormalTexture[face.Indices.Count];
 					for (var index = 0; index < face.Indices.Count; index++)
 					{
@@ -121,7 +129,7 @@ namespace ModelRenderer
 
 					if (face.Material.Transparency.HasValue)
 					{
-						if (face.Material.Transparency.Value > 0)
+						if (face.Material.Transparency.Value < 1f)
 						{
 							a.HasTransparency = true;
 						}
@@ -190,15 +198,18 @@ namespace ModelRenderer
 		}
 
 		private IEnumerable<Group> _renderedGroups = new Group[0];
+		private IEnumerable<Group> _renderedAlphaGroups = new Group[0];
 		//TODO: Actually use raytracing...
 		private void Raytrace()
 		{
 			BoundingFrustum frustum = new BoundingFrustum(_effect.View * _effect.Projection);
 
 			List<Group> renderable = new List<Group>();
+			List<Group> renderableAlpha = new List<Group>();
 			foreach (var g in Groups)
 			{
 				bool hasRenderable = false;
+				bool transparent = false;
 				foreach (var area in g.Areas)
 				{
 					if (frustum.Contains(area.Box.Transform(_effect.World)) == ContainmentType.Disjoint)
@@ -210,15 +221,25 @@ namespace ModelRenderer
 						area.Render = true;
 						hasRenderable = true;
 					}
+
+					if (area.HasTransparency || area.Material.TextureMapAlpha != null) transparent = true;
 				}
 
 				if (hasRenderable)
 				{
-					renderable.Add(g);
+					if (transparent)
+					{
+						renderableAlpha.Add(g);
+					}
+					else
+					{
+						renderable.Add(g);
+					}
 				}
 			}
 
 			_renderedGroups = renderable;
+			_renderedAlphaGroups = renderableAlpha;
 		}
 
 		public void Update(GameTime gameTime, Matrix world, Matrix view, Matrix projection)
@@ -230,40 +251,36 @@ namespace ModelRenderer
 			Raytrace();
 		}
 
-		public void Render(GraphicsDevice device)
+		private void Render(GraphicsDevice device, IEnumerable<Group> groups)
 		{
-			device.BlendState = BlendState.AlphaBlend;
-
-			//device.SetVertexBuffer(Buffer);
-			foreach (var group in _renderedGroups)
+			foreach (var group in groups)
 			{
 				device.SetVertexBuffer(group.Buffer);
-				
-				foreach (var meshPart in group.Areas)
+
+				foreach (var area in group.Areas)
 				{
-					if (!meshPart.Render) continue;
+					if (!area.Render) continue;
 
-					SetBasicEffect(ref _effect, meshPart.Material);
-				/*	if (meshPart.HasTransparency)
-					{
-						device.BlendState = BlendState.AlphaBlend;
-					}
-					else if (device.BlendState != BlendState.Opaque)
-					{
-						device.BlendState = BlendState.Opaque;
-					}*/
-
-					//var effect = meshPart.Effect;
-					//effect.View = view;
-					//effect.Projection = projection;
-
+					SetBasicEffect(ref _effect, area.Material);
 					foreach (EffectPass pass in _effect.CurrentTechnique.Passes)
 					{
 						pass.Apply();
-						device.DrawPrimitives(PrimitiveType.TriangleList, meshPart.Start, meshPart.Length);
+						device.DrawPrimitives(PrimitiveType.TriangleList, area.Start, area.Length);
 					}
 				}
 			}
+		}
+
+		public void Render(GraphicsDevice device)
+		{
+			device.BlendState = BlendState.Opaque;
+			device.DepthStencilState = DepthStencilState.Default;
+			device.RasterizerState = RasterizerState.CullClockwise;
+			
+			Render(device, _renderedGroups);
+
+			device.BlendState = BlendState.AlphaBlend;
+			Render(device, _renderedAlphaGroups);
 		}
 	}
 }
